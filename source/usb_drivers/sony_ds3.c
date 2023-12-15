@@ -108,10 +108,12 @@ enum ds3_analog_axis_e {
 	DS3_ANALOG_AXIS__NUM
 };
 
+#define MAX_ANALOG_AXIS DS3_ANALOG_AXIS__NUM
+
 struct ds3_private_data_t {
 	struct {
 		u32 buttons;
-		u8 analog_axis[DS3_ANALOG_AXIS__NUM];
+		u8 analog_axis[MAX_ANALOG_AXIS];
 		s16 acc_x, acc_y, acc_z;
 	} input;
 	enum bm_ir_emulation_mode_e ir_emu_mode;
@@ -255,11 +257,12 @@ static inline int ds3_request_data(usb_input_device_t *device)
 							   USB_REQ_GETREPORT,
 							   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
 							   device->usb_async_resp,
-							   sizeof(device->usb_async_resp));
+							   device->max_packet_len);
 }
 
 static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
 {
+	return 0;
 	u8 buf[] ATTRIBUTE_ALIGN(32) = {
 		0x00,                         /* Padding */
 		0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
@@ -330,8 +333,18 @@ int ds3_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 	priv->switch_mapping = false;
 	priv->switch_ir_emu_mode = false;
 
-	/* Set initial extension */
-	fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+	if (device->vid == SONY_INST_VID) {
+        if (device->pid == GH_GUITAR_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_GUITAR);
+        } else if (device->pid == GH_DRUM_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_DRUM);
+        } else if (device->pid == DJ_TURNTABLE_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_TURNTABLE);
+        }
+    } else {
+        /* Set initial extension */
+        fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+    }
 
 	ret = ds3_request_data(device);
 	if (ret < 0)
@@ -370,6 +383,7 @@ int ds3_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
 
 bool ds3_report_input(usb_input_device_t *device)
 {
+	
 	struct ds3_private_data_t *priv = (void *)device->private_data;
 	u16 wiimote_buttons = 0;
 	u16 acc_x, acc_y, acc_z;
@@ -436,7 +450,6 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
 	struct ds3_private_data_t *priv = (void *)device->private_data;
 	struct ds3_input_report *report = (void *)device->usb_async_resp;
-
 	ds3_get_buttons(report, &priv->input.buttons);
 	ds3_get_analog_axis(report, priv->input.analog_axis);
 
